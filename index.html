@@ -828,7 +828,7 @@ async function loadDashboard(){
 function getReferralStats(surveys){
   var counts={};surveys.forEach(function(s){if(s.ReferralSource){var k=s.ReferralSource;counts[k]=(counts[k]||0)+1;}});
   var labels=Object.keys(counts);var values=Object.values(counts);
-  if(!labels.length){labels=["SNS","友人","検索","チラシ","その他"];values=[12,8,5,3,2];}
+  if(!labels.length){labels=["データなし"];values=[1];}
   return{labels:labels,values:values};
 }
 
@@ -1366,7 +1366,7 @@ async function loadSurveyAnalysis(){
 // ===== INIT =====
 (function init(){
   // Clear old seeded demo data from previous versions
-  var ver="v2";if(lsGet("admin_version")!==ver){
+  var ver="v3";if(lsGet("admin_version")!==ver){
     ["connecplus_chat","connecplus_news","admin_todos","admin_schedule"].forEach(function(k){localStorage.removeItem(k);});
     lsSet("admin_version",ver);
   }
@@ -1376,6 +1376,16 @@ async function loadSurveyAnalysis(){
   loadDashboard();
   renderTodos();
   renderSchedule();
+
+  // Auto-refresh every 60 seconds
+  setInterval(function(){
+    if(currentSection==="dashboard")loadDashboard();
+    else if(currentSection==="events")loadEventsTable();
+    else if(currentSection==="participants")loadParticipantsTable();
+    else if(currentSection==="survey")loadSurveyAnalysis();
+    else if(currentSection==="chat")loadChatThreads();
+    else if(currentSection==="news")loadNewsAdmin();
+  },60000);
 })();
 </script>
 </body>
