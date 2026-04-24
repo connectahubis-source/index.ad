@@ -1639,12 +1639,113 @@ const GAS='https://script.google.com/macros/s/AKfycbw94iJOYloTfXOeOONgwyP3MlTXOB
 const MK='AIzaSyDt5gcjZU6RO6luXj-pumhKhuuVhvWIVb8';
 const PW='connecta.2026';
 
+// === [GLOBAL STATE] 全モジュールで共有されるグローバル状態変数を先頭で初期化 ===
+// 配列型の状態(forEach/map/filter/indexOf/length等が使われるもの)を必ず配列初期化
+var charts = {};
+var allEventsCache = [];
+// メール
+var mailSelectedEventIds = [];
+var mailAllEventsCache = [];
+var mailAllParticipantsCache = [];
+var mailAllRegsCache = [];
+var mailFormat = 'text';
+var mailRecipientUpdateTimer = null;
+var mailAttachedImages = [];
+var mailTiming = 'now';
+// ニュース
+var editNewsId = null;
+var newsListCache = [];
+var newsAttachedImages = [];
+var newsSelectedEventIds = [];
+// チャット
+var activePid = null;
+var chatThreadsCache = [];
+var chatMessagesCache = {};
+// カレンダー
+var calMode = 'week';
+var calDate = new Date();
+var calSel = null;
+var editSchId = null;
+// イベントモーダル状態
+var editEvId = null;
+var evCQ = [];
+var evRefs = ['SNS','友人紹介','Web検索','チラシ','その他'];
+var evStations = [];
+var evSchedule = [];
+var evBringItems = [];
+var evPosters = [];
+var evPaymentMethods = { paypay: false, card: false, cash: false };
+var evStaff = [];
+var evFaq = [];
+var evCustomOrg = null;
+var selectedPrefs = [];
+// その他
+var currentTab = 'dashboard';
+var autoTimer = null;
+var editTmplId = null;
+var currentTmplTab = 'all';
+var editTdId = null;
+var editMemId = null;
+var editAdId = null;
+var draftAutoSaveTimer = null;
+var currentDraftId = null;
+var stepObserver = null;
+var _evModalShortcutsInited = false;
+var pollTimer = null;
+var lastQr = null;
+var _audioCtx = null;
+var cameraStream = null;
+var cameraScanning = false;
+var cameraFacing = 'environment';
+var lastScannedCode = null;
+var lastScanTime = 0;
+var pendingQrData = null;
+var _pendingDetailCache = null;
+var currentScanMode = null;
+var _cropper = null;
+var _cropConfig = null;
+// COMMON_VAR_DEFS も先頭で定義(変数ピッカーで参照される)
+var COMMON_VAR_DEFS = {
+  'name':      { label: '名前',       desc: '参加者の名前',         scope: ['mail','news'] },
+  'email':     { label: 'メール',     desc: '参加者のメールアドレス', scope: ['mail'] },
+  'rank':      { label: 'ランク',     desc: '参加者のランク',         scope: ['mail','news','chat'] },
+  'eventName': { label: 'イベント名', desc: '対象イベントの名前',     scope: ['mail','news','chat'] },
+  'date':      { label: '日時',       desc: 'イベントの日時',         scope: ['mail','news','chat'] },
+  'location':  { label: '会場',       desc: 'イベントの会場',         scope: ['mail','news','chat'] },
+  'price':     { label: '料金',       desc: 'イベントの料金',         scope: ['mail','news'] },
+  'qrData':    { label: 'QRコード',   desc: 'チェックインQR文字列',   scope: ['mail'] },
+  'orgName':   { label: '団体名',     desc: 'connec+a または 主催団体', scope: ['mail','news','chat'] },
+  'today':     { label: '今日の日付', desc: '送信日',                 scope: ['mail','news','chat'] }
+};
+
 // === AUTH ===
-function doLogin(){if(document.getElementById('pw-input').value===PW){localStorage.setItem('ca_auth','1');document.getElementById('login-page').style.display='none';document.getElementById('app').style.display='block';initApp();}else{document.getElementById('login-err').textContent='パスワードが違います';}}
+function doLogin(){
+  if(document.getElementById('pw-input').value === PW){
+    localStorage.setItem('ca_auth','1');
+    document.getElementById('login-page').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    // [CRITICAL] スクリプト全体評価完了を確実に待つため setTimeout(0) で遅延実行
+    setTimeout(initApp, 0);
+  } else {
+    document.getElementById('login-err').textContent = 'パスワードが違います';
+  }
+}
 function doLogout(){localStorage.removeItem('ca_auth');location.reload();}
 document.getElementById('pw-input').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
-if(localStorage.getItem('ca_auth')==='1'){document.getElementById('login-page').style.display='none';document.getElementById('app').style.display='block';initApp();}
-function initApp(){loadDashboard();updateChatBadge();startAutoRefresh();updateClock();initEventModalShortcuts();}
+if(localStorage.getItem('ca_auth')==='1'){
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  // [CRITICAL] スクリプト全体の評価が完了してから initApp を実行
+  // DOMContentLoaded が既に発火済みの可能性があるので、setTimeout でイベントループ1周遅延
+  setTimeout(initApp, 0);
+}
+function initApp(){
+  try { loadDashboard(); } catch(e){ console.error('[initApp] loadDashboard:', e); }
+  try { updateChatBadge(); } catch(e){ console.error('[initApp] updateChatBadge:', e); }
+  try { startAutoRefresh(); } catch(e){ console.error('[initApp] startAutoRefresh:', e); }
+  try { updateClock(); } catch(e){ console.error('[initApp] updateClock:', e); }
+  try { initEventModalShortcuts(); } catch(e){ console.error('[initApp] initEventModalShortcuts:', e); }
+}
 
 // === UTILS ===
 async function api(a,p){p=p||{};const r=await fetch(GAS,{method:'POST',redirect:'follow',headers:{'Content-Type':'text/plain'},body:JSON.stringify(Object.assign({action:a},p))});const j=await r.json();if(!j.success)throw new Error(j.error||'Error');return j.data;}
@@ -1658,25 +1759,7 @@ function updateClock(){const el=document.getElementById('topbar-time');if(el)el.
 function insertVar(textareaId,varStr){const ta=document.getElementById(textareaId);if(!ta)return;const s=ta.selectionStart,e=ta.selectionEnd;ta.value=ta.value.substring(0,s)+varStr+ta.value.substring(e);ta.focus();ta.selectionStart=ta.selectionEnd=s+varStr.length;// [7b+] 変更通知イベントを発火(プルダウン同期・プレビュー更新用)
 var event=new Event('input',{bubbles:true});ta.dispatchEvent(event);}
 
-// ===== [7b+] 共通変数システム(メール/ニュース/チャット等で再利用) =====
-// 各機能が使える変数を定義
-// key: 変数キー, label: 表示ラベル, placeholder: 送信時に置換される値の例
-var COMMON_VAR_DEFS = {
-  // 参加者情報(個別送信で使える)
-  'name':      { label: '名前',       desc: '参加者の名前',         scope: ['mail','news'] },
-  'email':     { label: 'メール',     desc: '参加者のメールアドレス', scope: ['mail'] },
-  'rank':      { label: 'ランク',     desc: '参加者のランク',         scope: ['mail','news','chat'] },
-  // イベント情報(イベント選択時に使える)
-  'eventName': { label: 'イベント名', desc: '対象イベントの名前',     scope: ['mail','news','chat'] },
-  'date':      { label: '日時',       desc: 'イベントの日時',         scope: ['mail','news','chat'] },
-  'location':  { label: '会場',       desc: 'イベントの会場',         scope: ['mail','news','chat'] },
-  'price':     { label: '料金',       desc: 'イベントの料金',         scope: ['mail','news'] },
-  'qrData':    { label: 'QRコード',   desc: 'チェックインQR文字列',   scope: ['mail'] },
-  // 団体情報
-  'orgName':   { label: '団体名',     desc: 'connec+a または 主催団体', scope: ['mail','news','chat'] },
-  // その他
-  'today':     { label: '今日の日付', desc: '送信日',                 scope: ['mail','news','chat'] }
-};
+// ===== [7b+] 共通変数システム(COMMON_VAR_DEFS は先頭で宣言済み、関数のみここに配置) =====
 
 // scope に該当する変数のキー配列を取得
 function getVarsForScope(scope){
@@ -5129,7 +5212,8 @@ async function loadSurveyStats(){const a=document.getElementById('survey-area'),
   }catch(err){a.innerHTML='<div class="alert alert-err">'+esc(err.message)+'</div>';}}
 
 // === SCHEDULE (3-mode calendar) ===
-var calMode='week',calDate=new Date(),calSel=null,editSchId=null;
+// [GLOBAL] calMode, calDate, calSel, editSchId は先頭で初期化済み(再代入のみ)
+// var calMode='week',calDate=new Date(),calSel=null,editSchId=null; // 削除: 先頭で初期化済み
 const SCH_COL={event:'var(--coral)',prep:'var(--purple)',meeting:'var(--blue)',deadline:'var(--red)',other:'var(--ink4)'};
 function loadSchedule(){renderCal();renderSchList(null);renderSchSummary();}
 function setCalMode(m){calMode=m;document.querySelectorAll('.cal-mode-btn').forEach(b=>b.classList.toggle('active',b.textContent==={month:'月',week:'週','3day':'3日'}[m]));renderCal();}
